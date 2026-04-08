@@ -1,0 +1,16 @@
+{
+  "name": "obsidian-task-workflow",
+  "version": "0.2.1",
+  "description": "A powerful task management plugin for Obsidian with inbox, triage, subtasks, project views, weekly reports, and archive workflows.",
+  "main": "main.js",
+  "scripts": {
+    "build": "NODE_ENV=production node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs --watch"
+  },
+  "keywords": ["obsidian", "obsidian-plugin", "task-management", "productivity"],
+  "author": "Oscar Shao",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.25.2"
+  }
+}
