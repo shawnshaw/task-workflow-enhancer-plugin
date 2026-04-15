@@ -92,6 +92,8 @@ const taskRepository = {
     await this.ensureFolderPath(this.getArchiveRootPath());
     await this.ensureFolderPath(this.getBackupRootPath());
     await this.ensureFolderPath(this.getWorkspaceRootPath());
+    const attachmentRoot = this.getDataSources().attachmentRoot || DEFAULT_ATTACHMENT_ROOT;
+    await this.ensureFolderPath(attachmentRoot);
     await this.ensureWorkspaceTabSources(this.getWorkspaceTabs());
   },
 

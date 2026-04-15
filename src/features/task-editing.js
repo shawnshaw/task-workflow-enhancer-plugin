@@ -1,4 +1,5 @@
 const { Notice, MarkdownView } = require('obsidian');
+const { DEFAULT_ATTACHMENT_ROOT } = require('../constants');
 const { normalizeSpace, sanitizeAttachmentName, todayString } = require('../utils');
 
 const taskEditing = {
@@ -22,7 +23,7 @@ const taskEditing = {
   },
 
   async saveTaskAttachment(file) {
-    const folder = '_assets/task-workflow';
+    const folder = this.getDataSources().attachmentRoot || DEFAULT_ATTACHMENT_ROOT;
     await this.ensureFolderPath(folder);
     const originalName = file && file.name ? file.name : `image-${Date.now()}.png`;
     const dotIndex = originalName.lastIndexOf('.');

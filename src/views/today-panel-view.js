@@ -18,7 +18,7 @@ class TodayPanelView extends ItemView {
     const tabs = this.plugin.getWorkspaceTabs();
     this.activeTab = tabs.some((tab) => tab.id === savedState?.activeTab) ? savedState?.activeTab : (tabs[0]?.id || 'today');
     this.timeScope = ['today', 'tomorrow', 'week', 'month', 'all', 'overdue'].includes(savedState?.timeScope) ? savedState.timeScope : 'today';
-    this.folderScope = ['all', 'inbox', 'today', 'blocked', 'waiting', 'done', 'archived', 'archive_knowledge', 'archive_evidence'].includes(savedState?.folderScope) ? savedState?.folderScope : 'all';
+    this.folderScope = ['all', 'today', 'blocked', 'waiting', 'done', 'archived', 'archive_knowledge', 'archive_evidence'].includes(savedState?.folderScope) ? savedState?.folderScope : 'all';
     this.topNavCollapsed = typeof savedState?.topNavCollapsed === 'boolean' ? savedState.topNavCollapsed : true;
     this.selectedTaskKey = typeof savedState?.selectedTaskKey === 'string' ? savedState.selectedTaskKey : '';
     this.selectedProject = typeof savedState?.selectedProject === 'string' ? savedState.selectedProject : '';
@@ -27,6 +27,7 @@ class TodayPanelView extends ItemView {
     this.detailWidth = Math.max(320, Math.min(860, Number(savedState?.detailWidth) || 360));
     this.expandedTaskKeys = new Set(Array.isArray(savedState?.expandedTaskKeys) ? savedState.expandedTaskKeys : []);
     this.renderVersion = 0;
+    this._archiveExpanded = typeof savedState?._archiveExpanded === 'boolean' ? savedState._archiveExpanded : false;
   }
 
   getViewType() {
@@ -480,7 +481,8 @@ class TodayPanelView extends ItemView {
       }
       const noteBlock = panel.createDiv({ cls: 'twe-detail-block' });
       noteBlock.createEl('div', { cls: 'twe-detail-label', text: '备注' });
-      noteBlock.createEl('div', { cls: 'twe-detail-value twe-detail-raw', text: task.note });
+      const noteValue = noteBlock.createDiv({ cls: 'twe-detail-value twe-detail-raw' });
+      this._renderNoteImages(noteValue, task.note);
     }
 
     const rawBlock = panel.createDiv({ cls: 'twe-detail-block' });
@@ -617,14 +619,10 @@ class TodayPanelView extends ItemView {
     folders.createEl('div', { cls: 'twe-sidebar-title', text: '分类' });
     const items = [
       ['all', '全部'],
-      ['inbox', '收件箱'],
       ['today', '待办'],
       ['blocked', '阻塞'],
       ['waiting', '等待'],
       ['done', '已完成'],
-      ['archived', '已归档'],
-      ['archive_knowledge', '知识归档'],
-      ['archive_evidence', '留痕归档'],
     ];
     const list = folders.createDiv({ cls: 'twe-folder-list' });
     items.forEach(([key, label]) => {
@@ -639,6 +637,48 @@ class TodayPanelView extends ItemView {
         await this.render();
       });
     });
+
+    // 已归档可展开卡片
+    const archiveTotal = (folderCounts.archived || 0) + (folderCounts.archive_knowledge || 0) + (folderCounts.archive_evidence || 0);
+    const isArchiveActive = ['archived', 'archive_knowledge', 'archive_evidence'].includes(this.folderScope);
+    const archiveCard = list.createEl('button', {
+      cls: `twe-folder-item is-archived${isArchiveActive ? ' is-active' : ''}`,
+    });
+    archiveCard.createEl('span', { cls: 'twe-sidebar-triangle', text: this._archiveExpanded ? '\u25BC' : '\u25B6' });
+    archiveCard.createSpan({ text: '已归档' });
+    archiveCard.createSpan({ cls: 'twe-folder-count', text: String(archiveTotal) });
+    archiveCard.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      // 点在三角上展开/收起
+      this._archiveExpanded = !this._archiveExpanded;
+      this.persistViewState();
+      await this.render();
+    });
+
+    if (this._archiveExpanded) {
+      const archiveChildren = [
+        ['archived', '普通归档'],
+        ['archive_knowledge', '知识归档'],
+        ['archive_evidence', '留痕归档'],
+      ];
+      const childCounts = {
+        archived: folderCounts.archived || 0,
+        archive_knowledge: folderCounts.archive_knowledge || 0,
+        archive_evidence: folderCounts.archive_evidence || 0,
+      };
+      archiveChildren.forEach(([key, label]) => {
+        const child = list.createEl('button', {
+          cls: `twe-folder-item is-${key}${this.folderScope === key ? ' is-active' : ''} is-sub`,
+        });
+        child.createSpan({ cls: 'twe-sub-label', text: label });
+        child.createSpan({ cls: 'twe-folder-count', text: String(childCounts[key]) });
+        child.addEventListener('click', async () => {
+          this.folderScope = key;
+          this.persistViewState();
+          await this.render();
+        });
+      });
+    }
   }
 
   renderTaskList(container, tasks) {
@@ -1012,6 +1052,16 @@ class TodayPanelView extends ItemView {
               evt.stopPropagation();
               await this.plugin.deleteTaskSubtask(task, index);
             });
+            const archiveBtn = actionsWrap.createEl('button', {
+              cls: 'twe-subtask-archive',
+              attr: { 'aria-label': '归档步骤' },
+            });
+            setIcon(archiveBtn, 'archive');
+            archiveBtn.addEventListener('click', async (evt) => {
+              evt.preventDefault();
+              evt.stopPropagation();
+              await this.plugin.openSubtaskArchiveModal(task, index);
+            });
             const meta = item.createDiv({ cls: 'twe-subtask-meta' });
             if (subtask.timeRange) meta.createDiv({ cls: 'twe-chip', text: subtask.timeRange });
             if (subtask.scheduled) meta.createDiv({ cls: 'twe-chip', text: `⏳ ${subtask.scheduled}` });
@@ -1220,8 +1270,34 @@ class TodayPanelView extends ItemView {
     const notesField = this.createField(notesSection, '补充说明');
     const notesInput = notesField.createEl('textarea');
     notesInput.value = draft.note || '';
-    notesInput.placeholder = '补充上下文、依赖人、提醒事项…';
+    notesInput.placeholder = '\u8865\u514D\u4E0A\u4E0B\u6587\u3001\u4F9D\u8D56\u4EBA\u3001\u63D0\u9192\u4E8B\u9879\u2026';
     notesInput.rows = 4;
+    // Ctrl+V 粘贴图片支持
+    notesInput.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
+      if (!imageItems.length) return;
+      e.preventDefault();
+      const files = [];
+      for (const item of imageItems) {
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (!files.length) return;
+      const embeds = [];
+      for (const file of files) {
+        const path = await this.plugin.saveTaskAttachment(file);
+        embeds.push(`![[${path}]]`);
+      }
+      const prefix = notesInput.value && !notesInput.value.endsWith('\n') ? '\n' : '';
+      const suffix = notesInput.value ? '\n' : '';
+      notesInput.value = `${notesInput.value || ''}${prefix}${embeds.join('\n')}${suffix}`;
+      notesInput.dispatchEvent(new Event('input', { bubbles: true }));
+      new Notice(`已粘贴 ${embeds.length} 张图片`);
+    });
     const noteMediaActions = notesSection.createDiv({ cls: 'twe-note-actions' });
     const addImageButton = noteMediaActions.createEl('button', {
       cls: 'twe-detail-button',
@@ -1343,6 +1419,42 @@ class TodayPanelView extends ItemView {
     return '';
   }
 
+  _renderNoteImages(container, note) {
+    if (!note) return;
+    const lines = note.split('\n');
+    for (const line of lines) {
+      const embedMatch = line.match(/^\!\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/);
+      if (embedMatch) {
+        const path = embedMatch[1];
+        const imgEl = container.createEl('img', {
+          cls: 'twe-note-image',
+          attr: { alt: path, loading: 'lazy' },
+        });
+        this._resolveEmbedUrl(path, imgEl);
+      } else if (line.trim()) {
+        container.createDiv({ cls: 'twe-note-text', text: line });
+      }
+    }
+  }
+
+  _resolveEmbedUrl(embedPath, imgEl) {
+    const normalizedPath = embedPath.replace(/\\/g, '/');
+    // 解析 Obsidian 内部链接
+    const resolved = this.app.metadataCache.getFirstLinkpathDest(normalizedPath, '');
+    if (resolved) {
+      imgEl.src = this.app.vault.getResourcePath(resolved);
+    } else {
+      // 找不到时降级显示
+      imgEl.src = normalizedPath;
+      imgEl.addEventListener('error', () => {
+        const span = document.createElement('span');
+        span.textContent = `[图片加载失败: ${embedPath}]`;
+        span.className = 'twe-note-image-error';
+        imgEl.replaceWith(span);
+      }, { once: true });
+    }
+  }
+
   persistViewState() {
     this.plugin.setTodayWorkspaceState({
       activeTab: this.activeTab,
@@ -1354,6 +1466,7 @@ class TodayPanelView extends ItemView {
       sidebarWidth: this.sidebarWidth,
       detailWidth: this.detailWidth,
       expandedTaskKeys: Array.from(this.expandedTaskKeys),
+      _archiveExpanded: this._archiveExpanded,
     });
   }
 }

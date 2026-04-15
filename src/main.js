@@ -39,6 +39,7 @@ const {
   TimeRangeModal,
   TriageButtonModal,
   ArchiveTaskModal,
+  SubtaskArchiveModal,
   DatePickerModal,
   SubtaskEditorModal,
   WeeklyReportModal,
@@ -775,15 +776,15 @@ class TaskWorkflowEnhancerPlugin extends Plugin {
       }
       if (!skipFollowupValidation && (values.workflowTag === '#WAIT' || values.workflowTag === '#BLOCKED') && (!values.owner || !values.item)) {
         new Notice('等待/阻塞子任务需要填写“责任人”和“事项”');
-        return;
+        return false;
       }
       if (!skipFollowupValidation && values.workflowTag === '#WAIT' && !values.confirmBy) {
         new Notice('等待确认子任务需要填写“确认截止”');
-        return;
+        return false;
       }
       if (!skipFollowupValidation && values.workflowTag === '#BLOCKED' && !values.eta) {
         new Notice('阻塞子任务需要填写“预计完成”');
-        return;
+        return false;
       }
 
       const payload = this.buildSubtaskPayload({
@@ -819,6 +820,62 @@ class TaskWorkflowEnhancerPlugin extends Plugin {
       });
       new Notice(subtaskIndex >= 0 ? '已更新子任务' : '已新增子任务');
     }).open();
+  }
+
+  async openSubtaskArchiveModal(task, subtaskIndex) {
+    const context = await this.getFileTaskContext(task);
+    if (!context) return;
+    const parsed = this.extractSubtasksFromNote(context.note || '');
+    const subtask = parsed.subtasks[subtaskIndex];
+    if (!subtask) return;
+    new SubtaskArchiveModal(this.app, subtask.title, async (type) => {
+      await this.archiveSubtask(task, subtaskIndex, type);
+      new Notice('子任务已归档');
+    }).open();
+  }
+
+  async archiveSubtask(task, subtaskIndex, type) {
+    const context = await this.getFileTaskContext(task);
+    if (!context) return;
+    const parsed = this.extractSubtasksFromNote(context.note || '');
+    const subtask = parsed.subtasks[subtaskIndex];
+    if (!subtask) return;
+    // 构造子任务内容写入归档文件
+    const folder = this.buildArchiveFolderPath(type);
+    await this.ensureFolderPath(folder);
+    const datePrefix = window.moment().format('YYYYMMDD-HHmmss');
+    const baseName = `subtask-${datePrefix}`;
+    let filePath = `${folder}/${baseName}.md`;
+    let counter = 1;
+    while (this.app.vault.getAbstractFileByPath(filePath)) {
+      filePath = `${folder}/${baseName}-${counter}.md`;
+      counter++;
+    }
+    const lines = [
+      '---',
+      `type: "subtask-archive"`,
+      `parent_task: "${task.title}"`,
+      `archived_at: "${window.moment().format('YYYY-MM-DD HH:mm:ss')}"`,
+      `archive_type: "${type}"`,
+      '---',
+      '',
+      `## ${subtask.title}`,
+      '',
+    ];
+    if (subtask.body) lines.push(subtask.body, '');
+    if (subtask.note) {
+      lines.push('## 备注', '', subtask.note, '');
+    }
+    await this.app.vault.create(filePath, lines.join('\n'));
+    // 从主任务中删除该子任务
+    const nextSubtasks = parsed.subtasks.filter((_, idx) => idx !== subtaskIndex);
+    const nextNote = this.composeNoteWithSubtasks(parsed.note, nextSubtasks);
+    await this.updateTaskFromPayload(task, {
+      done: task.done,
+      body: context.body,
+      note: nextNote,
+    });
+    await this.refreshTodayViews();
   }
 
   async openTaskTriageModal(task) {

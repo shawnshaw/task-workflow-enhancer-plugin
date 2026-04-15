@@ -5,6 +5,7 @@ const DEFAULT_INBOX_PATH = '📥 任务收件箱.md';
 const DEFAULT_ARCHIVE_ROOT = '_archives/tasks';
 const DEFAULT_BACKUP_ROOT = '_system/task-workflow/backups';
 const DEFAULT_WORKSPACE_ROOT = '_system/task-workflow/workspaces';
+const DEFAULT_ATTACHMENT_ROOT = '_assets/task-workflow';
 const TRIAGE_ACTIONS = [
   { label: '今天处理', tag: '#daily' },
   { label: '本周推进', tag: '#weekly' },
@@ -31,6 +32,7 @@ const DEFAULT_DATA_SOURCES = {
   archiveRoot: DEFAULT_ARCHIVE_ROOT,
   backupRoot: DEFAULT_BACKUP_ROOT,
   workspaceRoot: DEFAULT_WORKSPACE_ROOT,
+  attachmentRoot: DEFAULT_ATTACHMENT_ROOT,
   autoBackup: true,
   backupRetentionDays: 14,
   backupMaxPerDay: 20,
@@ -68,6 +70,7 @@ module.exports = {
   DEFAULT_ARCHIVE_ROOT,
   DEFAULT_BACKUP_ROOT,
   DEFAULT_WORKSPACE_ROOT,
+  DEFAULT_ATTACHMENT_ROOT,
   TRIAGE_ACTIONS,
   COMPLEXITY_TAGS,
   COMPLEXITY_OPTIONS,
